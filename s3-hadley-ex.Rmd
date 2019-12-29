@@ -4,6 +4,17 @@ Lesen Sie das [`S3`](https://adv-r.hadley.nz/s3.html) Kapitel von H. Wickham's *
 Bearbeiten Sie (mindestens) die folgenden von dort übernommenen/inspirierten Aufgaben:
 
 - Was tut die `as.data.frame.data.frame()` Methode? Warum ist das verwirrend? Wie können Sie derartige Verwirrung in Ihrem eigenen Code vermeiden?
+
+
+
+as.data.frame ist eine generische Methode. es gibt z.B. as.data.frame.vector, 
+as.data.frame.matrix und eben as.data.frame.data.frame, welche ein Objekt von 
+der Klasse data.frame in einen data.frame umwandelt. 
+Das Problem ist, dass die Funktion, die ein Objekt
+zu einem dataframe machen soll Punkte in der Definition enthält, die in R
+eigentlich für die S3 Methoden "reserviert" sind. Besser wäre z.B. 
+as_data_frame.data_frame
+
 - Beschreiben/erklären Sie das Verhalten dieses Codes:
 ```r
 set.seed(1014)
@@ -13,6 +24,22 @@ mean(some_days)
 mean(unclass(some_days))
 # [1] 18230.4
 ```
+Dates sind ja doubles. Das bedeutet
+wenn as.Date("2019-11-24") und sample(10, 5) addiert werden, addieren sich die
+entsprechenden doubles (wobei das Date recycelt wird) außerdem wird dabei 
+das Ergebnis wieder der Klasse "Date" zugewiesen.
+Wenn man dann die generische Funktion mean auf some_days anwendet 
+wird die Funktion mean.Date ausgeführt. Diese stellt das Ergebnis wieder in dem 
+Date-Format da. Man kann mit unclass(mean(some_days)) auch wieder den Mittelwert
+bekommen. Da mean(some_days) ja immer noch ein double ist. Auch wenn es das 
+Attribut Date hat. Wenn man mean(unclass(some_days)) druckt wird eben zunächst
+die Klasse entfernt und dann die doubles aus dem Vektor gemittelt. 
+Wenn man sich dies dann ausgeben lässt wird nichtmehr die Funktion print.Date
+sondern die für Objekte von der Klasse "numeric" passende print-Funktion, die
+man mit sloop::s3_dispatch(print(unclass(some_days))) bekommt und print.default ist.
+
+
+
 - Welche Klasse hat `x` im folgenden Code? Auf welchem *base type* basiert diese Klasse? Welche Attribute nutzt sie und wie sind die mathematischen Eigenschaften von Verteilungsfunktionen hier konkret implementiert? 
 ```r
 x <- ecdf(rpois(100, 10))
@@ -21,13 +48,209 @@ x
 # Call: ecdf(rpois(100, 10))
 #  x[1:15] =      1,      4,      5,  ...,     16,     17
 ```
+
+Mit typeof(x) bekommt man den base type, der hier 'closure' ist. x hat die 
+Attribute 'call' und und 'class'. Wobei es zur Klasse 'ecdf' gehört die eine 
+Unterklasse von 'stepfun' ist, die wiederrum eine Unterklasse von 'function'
+ist. Der 'call' gibt an wie die Funktion definiert wurde. also das Language Objekt (?)
+das zur Definition verwendet wurde. 
+
+Mit View(ecdf) kann man sich die Funktion genauer anschauen:
+Was im Prinzip passiert, ist dass für jede Ausprägung gezählt wird wie oft diese
+vorkommt und dann durch die Anzahl an Beobachtungen geteilt wird um 
+zu gewährleisten, dass die zugehörige Dichte zu 1 integriert. 
+Mit der Funktion und ein paar weiteren Details wird dies dann zu einer 
+Treppenfunktion transformiert. 
+
+
 - Schreiben Sie einen neuen low-level Konstruktor für `data.frame`-Objekte (ohne die Funktionen `as.data.frame()` oder `data.frame()` zu benutzen, selbstverständlich). Machen Sie sich zunächst klar: Auf welchem *base type* basiert `data.frame`? Welche Attribute nutzt `data.frame`? Welche Restriktionen gelten für die verschiedenen Einträge und Attribute?  
     *Hinweis*: Sehen Sie sich dafür zunächst mal so etwas wie `str(unclass(<irgend ein data.frame>))` an.
+    
+    
+```{r}
+# Qestion: are these too many checks for a constructor or is this 
+# still ok?
+
+new_data_frame <- function(..., row_names = NULL) {
+  dat <- list(...)
+
+  # all elements of dat must have the same length 
+  # note that we use <= and not == as empty data.frames are also OK
+  checkmate::assert_true(length(unique(lengths(dat))) <= 1)
+
+  n_rows <- unique(lengths(dat))
+  n_cols <- length(dat)
+
+  if (length(n_rows) == 0 & n_cols == 0) # early exit for empty input
+    {
+      return(structure(
+        .Data = dat,
+        class = "data.frame",
+        row.names = NULL,
+        names = NULL
+      ))
+    }
+
+  if (is.null(row_names) == TRUE) row_names <- seq_len(n_rows)
+
+  checkmate::assert_true(!any(duplicated(row_names))) # no duplicate names
+  checkmate::assert_true(length(row_names) == n_rows) # row_names of same length as rows
+
+  names <- names(dat) # if no name is specified names will be NULL after this assignment
+  if (is.null(names)) # empty exit if no name is specified
+    {
+      names <- paste("V", 1:n_cols, sep = "")
+      structure(
+        .Data = dat,
+        class = "data.frame",
+        row.names = row_names,
+        names = names
+      )
+  }
+  
+  # now deal with the case in which some names were specified
+
+  missing_names <- names %in% ""
+  n_missing_names <- sum(missing_names)
+
+  if (n_missing_names == 0) # early exit in case all names are specified
+    {
+      structure(
+        .Data = dat,
+        class = "data.frame",
+        row.names = row_names,
+        names = names
+      )
+    }
+
+  # in case some names are specified we also call the missing
+  # names "V1" etc. but we now have to be careful that those names
+  # not already exist. As there are at maximum n_col - 1 different names (because
+  # of the early exit in case all names exist) we create the names
+  # c("V1", "V2", ...) up to 2*(n_col - 1)
+  # and chose the first n_missing ones that are not already in names
+
+  candidate_names <- paste("V", 1:n_cols, sep = "")
+  possible_names <- candidate_names[!(candidate_names %in% names)]
+  new_names <- possible_names[1:n_missing_names]
+  names[missing_names] <- new_names
+  structure(
+    .Data = dat,
+    class = "data.frame",
+    row.names = row_names,
+    names = names
+  )
+}
+test_data <- new_data_frame(a = 1:10, rnorm(10))
+
+
+### some tests ###
+
+library(testthat)
+
+context("new_data_frame works")
+
+
+test_that("new_data_frame works for sensical input", {
+  expect_equivalent(
+    new_data_frame(1:10, 2:11),
+    data.frame(1:10, 2:11)
+  )
+  expect_equivalent(
+    new_data_frame(1:10, 2:11, row_names = letters[1:10]),
+    data.frame(1:10, 2:11, row.names = letters[1:10])
+  )
+  expect_true(
+    is.data.frame(new_data_frame(1))
+  )
+  expect_equivalent(
+    data.frame(),
+    new_data_frame()
+  )
+})
+
+```
+
+    
 - Kategorisieren Sie die Klassen der Rückgabe-Objekte von `lm(), factor(), table(), as.Date(), as.POSIXct(), ecdf(), ordered(), I()` in die Klassentypen *vector class*, *record style class*, *scalar class* die in *Advanced R* beschrieben  werden.
+
+In der verlinken Version des Buches wird außerdem noch der Klassentyp
+dataframe aufgelistet: 
+
+vector: factor, as.date, ordered, 
+data frame: table
+record style class (Eine Liste mit Vektoren gleicher Länge): as.POSIXct
+scalar class: lm, ecdf (? gibt ja eine Funktion zurück)
+
+I passt nicht so richtig rein und gibt genau das aus, was man als input eingibt, 
+lediglich der Attribut-Vektor wird um eins nach rechts geshifted und der erste
+Eintrag mit "AsIs" gefüllt. 
+
+
+
+
+
 - Wie sähe ein Konstruktor `new_lm` für Objekte der Klasse `lm` aus? Warum wäre ein solcher Konstruktor vermutlich nicht besonders nützlich? 
+
+So ein Konstruktur hätte als Inputs ja den Koeffizienten-Vektor, die Residuen, ...
+und würde daraus das entsprechende "lm"-Objekt erzeugen. Niemand hat allerdings
+Lust diese Argumente händisch zu spezifizieren. 
+
+
+Eine schematische Darstellung der Funktion: 
+
+```{r}
+new_lm <- function(coefficients, residuals, effects, rank, fitted.values, assign,
+                   qr, df.residual, xlevels, call, terms, model) {
+  # some tests...
+  structure(
+    list(
+      coefficients = coefficients,
+      residuals = residuals,
+      effects = effects,
+      rank = rank,
+      fitted.values = fitted.values,
+      assign = assign,
+      qr = qr,
+      df.residual = df.residual,
+      xlevels = xlevels,
+      call = call,
+      terms = terms,
+      model = model
+    ),
+    class = "lm"
+  )
+}
+```
+
+
+
+
+
 - Lesen Sie den Quellcode für `t()` und `t.test()`. Ist `t.test()` eine generische S3 Funktion oder eine S3 Methode? Was passiert im Detail wenn sie `t()` auf ein S3-Objekt mit Klasse `test` anwenden (s.u.)? Warum?
+
 ```r
 x <- structure(1:10, class = "test")
 t(x)
 ```
+
+
+t.test ist eine generische Methode, da methods("t.test") ein Ergebnis liefert
+und isS4("t.test") ein FALSE liefert. es gibt die default-Funktion t.test.default
+und die Version für Objekte der Klasse formula: t.test.formula
+
+Wenn man t (eine generische Funktion) auf ein Objekt der Klasse "test" anwendet
+wird durch den method distpatch die Methode t.test angewandt. Da diese
+wiederrum eine generische Methode ist, wird durch den method distpatch die Methode
+t.test.default angewandt, da das Objekt x keine Formula ist. Allerdings
+sind beide Funktionen nur mit stats:::t.test.formula aufrufbar.
+
+
+
+```{r}
+x <- structure(1:10, class = "test")
+identical(t(x), stats:::t.test.default(x))
+```
+
+
 
