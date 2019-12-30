@@ -1,3 +1,8 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
 ## `S3` -- *Bebe-Sprabachebe*
 
 **Be-Sprache** bedeutet nach jedem Vokal oder Diphtong^["au", "ei", "oi", "eu", etc.] die Konsonanten davor mit "b" zu ersetzen und bis zu diesem Vokal oder Diphtong zu wiederholen: 
@@ -5,7 +10,7 @@
 ```{r, bb_starter, code = readLines("s3-bb-starter.R")}
 ```
 
-```{r, bb_sol, code = readLines("s3-bb-def.R"), echo=FALSE}
+```{r, bb_sol, code = readLines("s3-bb-sol.R"), echo=FALSE}
 ```
 Benutzen Sie den oben angegebenen Code als Ausgangsbasis um daraus eine standardkonforme Konstruktorfunktion zu machen sowie Interface-Methoden für eine neu zu definierende `bb()`-*generic* zu schreiben die `character`-Vektoren, -Matrizen, -Arrays, -Listen und `factor`-Variablen entsprechend verunstalten und den verunstalteten Ergebnissen die (zusätzliche) Klasse `bb` zuweisen.  
 Beachten Sie die Hinweise zu Interface- und Konstruktorfunktionen etc im entsprechenden [Kapitel aus *Advanced R*](https://adv-r.hadley.nz/s3.html#classes).  
