@@ -1,0 +1,21 @@
+## `S3` -- *Bebe-Sprabachebe*
+
+**Be-Sprache** bedeutet nach jedem Vokal oder Diphtong^["au", "ei", "oi", "eu", etc.] die Konsonanten davor mit "b" zu ersetzen und bis zu diesem Vokal oder Diphtong zu wiederholen: 
+*Bebe-Sprabachebe bebedeubeutebet nabach jebedebem Vobokabal obodeber Dibiphtobong diebie Kobonsobonabanteben dabavobor mibit "b" zubu ebersebetzeben ubund bibis zubu diebiesebem Vobokabal obodeber Dibiphtobong zubu wiebiedeberhoboleben*.
+```{r, bb_starter, code = readLines("s3-bb-starter.R")}
+```
+
+```{r, bb_sol, code = readLines("s3-bb-def.R"), echo=FALSE}
+```
+Benutzen Sie den oben angegebenen Code als Ausgangsbasis um daraus eine standardkonforme Konstruktorfunktion zu machen sowie Interface-Methoden für eine neu zu definierende `bb()`-*generic* zu schreiben die `character`-Vektoren, -Matrizen, -Arrays, -Listen und `factor`-Variablen entsprechend verunstalten und den verunstalteten Ergebnissen die (zusätzliche) Klasse `bb` zuweisen.  
+Beachten Sie die Hinweise zu Interface- und Konstruktorfunktionen etc im entsprechenden [Kapitel aus *Advanced R*](https://adv-r.hadley.nz/s3.html#classes).  
+Überlegen Sie sich gut für welche Klassen eigene Methoden wirklich nötig sind und 
+nutzen Sie Vererbungsrelationen/Klassenhierarchien und geschickten *method dispatch* aus um mit möglichst wenig verschiedenen 
+Methoden auszukommen.^[Spoiler: 3 bis max. 4 Methoden reichen aus um alle Testfälle unten komplett abzudecken....]
+
+Überprüfen Sie ihre Implementation mit folgenden Testfällen:
+```{r, bb_example, code = readLines("test-s3-bb.R")}
+```
+Verhalten für ungeeignete Inputs:
+```{r, bb_fail, , code = readLines("s3-bb-fail.R"), error = TRUE}
+```

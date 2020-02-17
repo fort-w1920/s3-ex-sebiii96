@@ -1,0 +1,188 @@
+```{r, child = "s3-hadley-ex.Rmd"}
+```
+
+----------------------------------------------------
+
+### Lösung:
+
+**`as.data.frame.data.frame`**:
+
+`as.data.frame.data.frame` *source code* mit Kommentaren:
+```{r 5_hadleys3_datadataframeframe}
+as.data.frame.data.frame <- function(x, row.names = NULL, ...) {
+  cl <- oldClass(x)
+  # entfernt alle Klassen die *vor* data.frame im class-vektor stehen
+  # also: falls das übergebene x in Unterklasse(n) von data.frame war,
+  # ist das zurückgegebene x nicht mehr in dieser/n:
+  i <- match("data.frame", cl)
+  if (i > 1L) {
+    class(x) <- cl[-(1L:(i - 1L))]
+  }
+  # checkt die übergebenenen row.names:
+  if (!is.null(row.names)) {
+    nr <- .row_names_info(x, 2L)
+    if (length(row.names) == nr) {
+      attr(x, "row.names") <- row.names
+    } else {
+      stop(sprintf(
+        ngettext(
+          nr, "invalid 'row.names', length %d for a data frame with %d row",
+          "invalid 'row.names', length %d for a data frame with %d rows"
+        ),
+        length(row.names), nr
+      ), domain = NA)
+    }
+  }
+  x
+}
+```
+Der Funktionsname ist verwirrend weil unfassbar vieldeutig, potentiell. Das könnte sein:
+
+- die `as`-Methode für die S3-Klasse `data.frame.data.frame`  
+  (es gibt weder eine S3 generic `as` noch die Klasse)
+- die `as.data`-Methode für die S3-Klasse `frame.data.frame`  
+  (es gibt weder eine S3 generic `as.data` noch die Klasse)
+- die `as.data.frame`-Methode für die S3-Klasse `data.frame` (... Bingo)
+- die `as.data.frame.data`-Methode für die S3-Klasse `frame`  
+  (es gibt weder eine S3 generic `as.data.frame.data` noch die Klasse)
+
+... und genau deshalb benutzen wir nie "." als Trenner zwischen Namensbestandteilen.
+
+---------------------
+
+What do you **`mean`**?
+
+```{r 5_hadleys3_somedays}
+set.seed(1014)
+some_days <- as.Date("2017-01-31") + sample(10, 5)
+
+mean(some_days)
+mean(unclass(some_days))
+
+some_days
+unclass(some_days)
+
+methods("mean")
+```
+Der Unterschied zwischen den beiden Aufrufen von mean ist dass beim ersten Aufruf von `mean` die `mean.Date` Methode aufgerufen wird, 
+während beim zweiten die `mean.default`-Methode aufgerufen wird. Da die interne Repräsentation
+der `Date` Klasse "number of days since 1970-01-01" (s. `?Date`) ist ergibt sich dann eben als Mittelwert beim zweiten Aufruf der obige Wert.
+
+---------------------
+
+```{r 5_hadleys3_ecdf}
+set.seed(1212)
+x <- rpois(100, 3)
+ecdf_x <- ecdf(x)
+str(ecdf_x)
+# Also: ecdf_x ist eine empirische Verteilungsfunktion ist eine Treppenfunktion ist eine Funktion ...
+body(ecdf_x)
+ls.str(environment(ecdf_x))
+# .. die ".approxfun" zur Interpolation der empirischen Quantile,
+# welche in der `enclosure` von ecdf_x als x und y abgelegt sind, benutzt:
+cumsum(table(x) / 100)
+```
+
+---------------------
+
+Konstruktor für **`data.frame`**
+
+Beispiel `data.frame`:
+```{r 5_hadleys3_data_frame1}
+str(iris)
+attributes(iris)
+str(unclass(iris))
+```
+Also : `data.frames` sind benamte listen mit zusätzlichem rownames-Attribut.
+
+Konstruktorfunktionen sind low-level Funktionen die *nur* das Objekt selbst anlegen --
+wie Hadley sagt:
+
+> The constructor should follow three principles: Be called `new_myclass()`, have one argument for the base object and one for each attribute, and check the type of the base object and the types of each attribute.
+
+Komplizierte input checks und so weiter gehören dann eigentlich eine *validator*-Funktion - also:
+
+```{r 5_hadleys3_data_frame2}
+new_data.frame <- function(x = list(), row.names = character()) {
+  stopifnot(is.list(x))
+  # NB: base-R also allows integers as row.names
+  stopifnot(is.character(row.names))
+  # NB: by default, base-R would turn all character vectors in data into factors
+  # at this point, but that sucks anyway so we don't....
+  structure(x, 
+            row.names = row.names,
+            class = "data.frame")
+}
+```
+und dann brauchen wir (hier nicht gefragt) auch noch:
+```{r 5_hadleys3_data_frame3}
+validate_data.frame <- function(x) {
+  data <- unclass(x)
+  rownames <- attr(x, "row.names")
+  # dataframe columns must have syntactically valid names
+  # and can be anything except functions, environments or NULL:
+  checkmate::assert_list(data, 
+                         names = "strict",
+                         types = c("atomic", "factor", "matrix", "list")) 
+  # dataframe columns must have identical lengths. 
+  # for arrays/matrices, this is their first dimension,
+  # for lists and vectors, it's their length:
+  get_nrows <- function(column) {
+    ifelse(inherits(column, c("array", "matrix")),
+      dim(column)[1], 
+      length(column))
+  }
+  if (!length(data) == 0) { # edge case: empty data.frame without columns
+    nrows <- vapply(data, get_nrows, numeric(1))
+    if (!all(nrows == nrows[1])) 
+       stop("all columns of `x` must have identical number of rows.",
+            call. = FALSE)
+    # row names must not be empty, must be unique (not enforced in base-R!)
+    checkmate::assert_character(rownames, min.chars = 1, len = nrows[1], 
+                                unique = TRUE)
+  } else {
+    # for empty data.frames, row.names can have any length:
+    checkmate::assert_character(rownames, min.chars = 1, unique = TRUE)
+  }
+  x
+}
+
+all.equal(
+  validate_data.frame(
+    new_data.frame(unclass(iris), rownames(iris))),
+  iris)
+
+str(validate_data.frame(
+  new_data.frame(list(int = 1:2, mat = matrix(1:4, 2, 2), fac = gl(2,1)), 
+                 as.character(1:2))))
+# etc....
+```
+
+----------------
+
+**class types**:
+
+- *vector*-Typ: existierender Vektor-`basetype` mit zusätzlichen Attributen, üblicherweise mehrere Werte, hier also:  
+  `factor` und `ordered`, die einfach nur `integer`-Vekoren mit zusätzlichem `levels`-Attribut sind, aber auch `as.POSIXct()` (s. `?DateTimeClasses`: "Class "POSIXct" represents the (signed) number of seconds since the beginning of 1970 (in the UTC time zone) as a numeric vector.") und `as.Date` (`?Date`: "Dates are represented as the number of days since 1970-01-01").
+- *record*-Typ: `as.POSIXlt`, s.Buch.
+- *scalar*-Typ: meistens benamte Listen, hier also: `lm`. Außerdem `table`, was als  `array` von mode `integer` abgespeichert wird. Auch `ecdf` (Unterklasse von `function`, s.o.) und `I`, welches einfach nur `AsIs` als erste Klasse an den `class`-Vektor dranhängt und sonst nichts am Objekt verändert. 
+
+---------------
+
+**`lm`**-Konstruktor:
+
+`lm`-Objekte sind benamte Listen mit etwa einem Dutzend Einträgen, haben also eine ziemlich komplexe Struktur. Die Werte der einzelnen Listeneinträge beruhen dabei haupsächlich auf den Berechnungen die man für das lineare Modell durchführen muss bzw repräsentieren die an `lm` übergebenen Argumente. Ein Konstruktor würde also diese Listeneinträge aneinanderhängen und die `mode`s aller Einträge überprüfen, während der *helper* die eigentlichen Berechnungen etc. durchführt. Insofern ist der Mehrwert einer Konstruktorfunktion hier relativ gering.
+
+---------------
+
+```{r 5_hadleys3_ttest}
+isS3stdGeneric(t.test)
+t.test
+a <- structure(rnorm(10), class = "test")
+t(a)
+t
+t(unclass(a))
+```
+
+Übereifriger *method dispatch*: Weil `t()` eine S3 `generic` ist, triggert `t(a)` einen method dispatch.
+Da `class(a)` `"test"` ist, wird also eine Methode (Funktion) namens `t.test` gesucht. Diese wird gefunden und mit Argument `a` aufgerufen. `t.test()` ist aber selbst eine *generic*, keine Methode, triggert also nochmal einen *method dispatch*, gesucht wird jetzt aber die Funktion `t.test.test()` (!!). Die gibt es nüscht, also wird `t.test.default` benutzt, was in dem Fall hier testet ob der Mittelwert von `a` O ist.

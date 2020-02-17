@@ -1,0 +1,39 @@
+```{r, child = "s3-bb-ex.Rmd"}
+```
+
+----------------------------------------------------
+
+### Lösung:
+
+```{r, bb_sol, echo =TRUE}
+```
+
+Bisschen umständlicher wäre:
+```{r, redef_bb_default}
+bb.default <- function(x) {
+  if (!is.character(x)) {
+    stop("non-character objects cannot be turned into bb-objects!\n")
+  }
+  result <- vapply(
+    X = x, FUN = new_bb, FUN.VALUE = character(1),
+    USE.NAMES = FALSE
+  )
+  class(result) <- c("bb", class(x))
+  result
+}
+bb.array <- function(x) {
+  # use bbfy.default, then restore dim attribute:
+  result <- bb(as.vector(x))
+  dim(result) <- dim(x)
+  class(result) <- c("bb", class(x))
+  result
+}
+bb.matrix <- function(x) {
+  # call array method explicitly:
+  bb.array(x)
+}
+```
+Dann würde die default-Methode nur für Vektoren aufgerufen. Obiger Code zeigt auch wie man sich manchmal durch den direkten Aufruf einer expliziten Methode behelfen kann um den *method dispatch*-Mechanismus zu umgehen (vgl. `bb.matrix()`, `bb.array()`).
+
+
+
